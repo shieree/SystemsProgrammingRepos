@@ -21,14 +21,14 @@ void* mymalloc (int size, char *file, int line) {
         } else if (memory[metadata] == 0 && memory[metadata+1] >= size) {
             // This runs if a free chunk of a sufficient size has been found
             foundChunk = 1;
-            int chunkLeftOverSize = memory[metadata+1];
+            int chunkLeftOverSize = memory[metadata+1] - size;
             memory[metadata] = 1;
             memory[metadata+1] = size;
             void* returnPointer = &memory[metadata+2];
 
             // This places metadata after the end of this new chunk signaling the leftover chunk's size
             if (memory[metadata+memory[metadata+1]+2] == 0 && memory[metadata+memory[metadata+2]+2] == 0) {
-                memory[metadata+memory[metadata+2]+2] = chunkLeftOverSize - size;
+                memory[metadata+memory[metadata+2]+2] = chunkLeftOverSize;
             }
 
             // return returnPointer;
@@ -39,8 +39,9 @@ void* mymalloc (int size, char *file, int line) {
     }
 }
 
-void myfree() {
-
+void myfree(void* ptr, char *file, int line) {
+    //ptr[-2] = 0;
+    // eager memory coalescing
 }
 
 // Meaningless comments to help me get the array indexing math right, you can ignore
