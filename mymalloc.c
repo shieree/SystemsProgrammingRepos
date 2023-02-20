@@ -1,35 +1,66 @@
 static char memory[4096];
 
+// Takes in a metadata number and converts the metadata's associated size to an int
+int metadataSizeToIntSize(int metadata) {
+    return ((memory[metadata+2]*1000) + (memory[metadata+3]*100) + (memory[metadata+4]));
+}
+// Takes in an int size and the metadata location and places the size into the metadata
+void intSizeToMetadataSize(int intSize, int metadata) {
+    int thousand = intSize / 1000;
+    intSize -= thousand*1000;
+    int hundred = intSize / 100;
+    intSize -= hundred*100;
+    int tensAndOnes = intSize;
+
+    memory[metadata+2] = thousand;
+    memory[metadata+3] = hundred;
+    memory[metadata+4] = tensAndOnes;
+}
+
 void* mymalloc (int size, char *file, int line) {
     
     // Initialization that should only run once the first time malloc is called
-    if (memory[1] == 0) {
-        memory[1] = 4094;
+    if (memory[1] == 0 && memory[2] == 0 && memory[3] == 0 & memory[4] == 0) {
+        memory[0] = '~';
+        memory[2] = 4;
+        memory[4] = 90;
+        memory[5] = '~';
+        
+        // Metadata looks like this after initialization
+        // 0    ~
+        // 1    0
+        // 2    4
+        // 3    0
+        // 4    90
+        // 5    ~
     }
 
     // This boolean variable dictates when to stop looking for a free chunk
-    int foundChunk = 0;
+    int foundSuitableChunk = 0;
     
-    // This variable refers to the array[] index. Starts at 0, the beginning index
+    // This variable refers to the array[] index. Starts at 0
     int metadata = 0;
     
-    while (foundChunk != 1) {
+    while (foundSuitableChunk != 1) {
+
+        int metadataSizeInt = metadataSizeToIntSize(metadata);
         
-        if (metadata > 4094) {
-            // If the current metadata index is greater than 4094, the end of the array has been reached and an error should be returned
+        if (metadata > 4090) {
+            // If the current metadata index is greater than 4090, the end of the array has been reached and an error should be returned
             // return error;
-        } else if (memory[metadata] == 0 && memory[metadata+1] >= size) {
+        } else if (memory[metadata+1] == 0 && metadataSizeInt >= size) {
             // This runs if a free chunk of a sufficient size has been found
-            foundChunk = 1;
-            int chunkLeftOverSize = memory[metadata+1] - size;
-            memory[metadata] = 1;
-            memory[metadata+1] = size;
-            void* returnPointer = &memory[metadata+2];
+            foundSuitableChunk = 1;
+            int chunkLeftOverSize = metadataSizeInt - size;
+            memory[metadata+1] = 1;
+            intSizeToMetadataSize(metadataSizeInt, metadata); // this rewrites the size of the chunk to be the new size
+            void* returnPointer = &memory[metadata+6];
 
             // This places metadata after the end of this new chunk signaling the leftover chunk's size
-            if (memory[metadata+memory[metadata+1]+2] == 0 && memory[metadata+memory[metadata+2]+2] == 0) {
-                memory[metadata+memory[metadata+2]+2] = chunkLeftOverSize;
-            }
+            // work in progress
+            // if () {
+                
+            // }
 
             // return returnPointer;
         } else if (memory[metadata] == 1) {
@@ -45,23 +76,43 @@ void myfree(void* ptr, char *file, int line) {
 }
 
 // Meaningless comments to help me get the array indexing math right, you can ignore
-// 0   1
-// 1   12
-// 2   data
-// 3   data
-// 4   data
-// 5   data
-// 6   data
-// 7   data
-// 8   data
-// 9   data
-// 10  data
-// 11  data
-// 12  data
-// 13  data
-// 14  1
-// 15  2
-// 16  data
-// 17  data
-// 18  0
-// 19  4076
+// 0    ~
+// 1    1
+// 2    0
+// 3    0
+// 4    12
+// 5    ~
+// 6    data
+// 7    data
+// 8    data
+// 9    data
+// 10   data
+// 11   data
+// 12   data
+// 13   data
+// 14   data
+// 15   data
+// 16   data
+// 17   data
+// 18   ~
+// 19   1
+// 20   0
+// 21   0
+// 22   2
+// 23   ~
+// 24   data
+// 25   data
+// 26   ~
+// 27   0
+// 28   4
+// 29   0
+// 30   64
+// 31   ~
+
+// 0    ~
+// 1    0
+// 2    4
+// 3    0
+// 5    92
+// 6    ~
+// 7    
