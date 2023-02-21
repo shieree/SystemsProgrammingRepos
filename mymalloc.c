@@ -17,6 +17,14 @@ void intSizeToMetadataSize(int intSize, int metadata) {
     memory[metadata+4] = tensAndOnes;
 }
 
+void errorChecking() {
+
+}
+
+void combination() {
+
+}
+
 void* mymalloc (int size, char *file, int line) {
     
     // Initialization that should only run once the first time malloc is called
@@ -57,10 +65,9 @@ void* mymalloc (int size, char *file, int line) {
             void* returnPointer = &memory[metadata+6];
 
             // This places metadata after the end of this new chunk signaling the leftover chunk's size
-            // work in progress
-            // if () {
+            if () {
                 
-            // }
+            }
 
             // return returnPointer;
         } else if (memory[metadata] == 1) {
@@ -71,8 +78,17 @@ void* mymalloc (int size, char *file, int line) {
 }
 
 void myfree(void* ptr, char *file, int line) {
-    //ptr[-2] = 0;
-    // eager memory coalescing
+
+    int validPointer = 0;
+    for (int i = 0; i < 4096; i++) {
+        if (ptr == memory[i]) {
+            validPointer = 1;
+        }
+    }
+
+    if (validPointer == 0) {
+        //error
+    }
 }
 
 // Meaningless comments to help me get the array indexing math right, you can ignore
