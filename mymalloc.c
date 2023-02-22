@@ -31,7 +31,7 @@ int isMetadataValid(int metadata) {
 // Function that iterates through the memory's metadata and combines free chunks that are adjacent
 void combination() {
     int prevMetadata = 0;
-    int nextMetadata = metaDataSizeToIntSize(prevMetadata) + 6;
+    int nextMetadata = metadataSizeToIntSize(prevMetadata) + 6;
 
     while (nextMetadata <= 4090) {
 
@@ -48,23 +48,23 @@ void combination() {
             return;
         }
         // This runs if two adjacent chunks are free, combining them and setting the nextMetadata value
-        if (memory[prevMetadata+1] == 0 || -1 && memory[nextMetadata == 0 || -1]) {
+        if (memory[prevMetadata+1] == 0 || -1 && memory[nextMetadata+1] == 0 || -1) {
             int newChunkSize = metadataSizeToIntSize(prevMetadata) + metadataSizeToIntSize(nextMetadata) + 6;
             for (int i = 0; i < 6; i++) {
                 memory[nextMetadata+i] = 0;
             }
             intSizeToMetadataSize(newChunkSize, prevMetadata);
-            nextMetadata = metaDataSizeToIntSize(prevMetadata) + 6;
+            nextMetadata = metadataSizeToIntSize(prevMetadata) + 6;
         }
         // This runs if the two adjacent chunks are not both free
         else {
             prevMetadata = nextMetadata;
-            nextMetadata = nextMetadata + metaDataSizeToIntSize(nextMetadata) + 6;
+            nextMetadata = nextMetadata + metadataSizeToIntSize(nextMetadata) + 6;
         }
     }
 }
 
-void* mymalloc (int size, char *file, int line) {
+void *mymalloc (int size, char *file, int line) {
     
     // Initialization that should only run once the first time malloc is called
     if (memory[1] == 0 && memory[2] == 0 && memory[3] == 0 & memory[4] == 0) {
@@ -94,21 +94,22 @@ void* mymalloc (int size, char *file, int line) {
 
         if (isValidChunk == 0) {
             printf("Error in mymalloc(): invalid metadata found at %d.\n", metadata);
-            return;
+            exit(1);
         }
 
         int metadataSizeInt = metadataSizeToIntSize(metadata);
         
         // If the current metadata index is greater than 4090, the end of the array has been reached and an error is returned
         if (metadata >= 4090) {
-            // return error;
+            printf("Error in mymalloc(): metadata pointer has reached the end of the array.\n");
+            exit(1);
         }
         // This runs if a free chunk of a sufficient size has been found
-        else if (memory[metadata+1] == 0 || -1 && metadataSizeInt >= size) {
+        else if (memory[metadata+1] == 0 || -1 && metadataSizeInt-6 >= size) {
             foundSuitableChunk = 1;
             int chunkLeftOverSize = metadataSizeInt - size;
             memory[metadata+1] = 1;
-            intSizeToMetadataSize(metadataSizeInt, metadata); // this rewrites the size of the chunk to be the new size
+            intSizeToMetadataSize(size, metadata); // this rewrites the size of the chunk to be the new size
             void* returnPointer = &memory[metadata+6];
 
             // This places metadata after the end of this new chunk signaling the leftover chunk's size
@@ -119,12 +120,12 @@ void* mymalloc (int size, char *file, int line) {
                 intSizeToMetadataSize(chunkLeftOverSize-6, metadata+6+size);
                 memory[metadata+6+size+5] = '~';
             }
-
+        
             return returnPointer;
         }
         // This runs if the current chunk is already occupied or if it is unoccupied and of insufficient size
         // Goes to next chunk
-        else if (memory[metadata+1] == 1 || (memory[metadata+1] == 0 && metadataSizeInt < size)) {
+        else if (memory[metadata+1] == 1 || (memory[metadata+1] == 0 || -1 && metadataSizeInt < size)) {
             metadata = metadata + metadataSizeInt + 6;
         }
         else {
@@ -136,6 +137,9 @@ void* mymalloc (int size, char *file, int line) {
 
 void myfree(void* ptr, char *file, int line) {
 
+    // casts ptr to a char pointer 'target' for use in myfree()
+    char * target = (char *)ptr;
+
     int validPointer = 0;
     for (int i = 0; i < 4096; i++) {
         if (ptr == memory[i]) {
@@ -145,7 +149,38 @@ void myfree(void* ptr, char *file, int line) {
     }
 
     if (validPointer == 0) {
-        //error
+        printf("Error in myfree(): Not a valid pointer. File: %s, Line: %d\n", file, line);
+        return;
+    }
+
+    // successful use of myfree
+    if (target[-1] == '~' && target[-6] == '~' && target[-5] == 1 ) {
+        target[-5] = -1;
+        printf("Chunk successfully freed!\n");
+        return;
+    }
+    
+    // pointer attempting to free a chunk already freed
+    else if (target[-1] == '~' && target[-6] == '~' && target[-5] == -1) {
+        printf("Error in myfree(): This chunk has already been freed. File: %s, Line: %d\n", file, line);
+        return;
+    }
+
+    // pointer attempting to free a chunk that is empty and never allocated
+    else if (target[-1] == '~' && target[-6] == '~' && target[-5] == 0) {
+        printf("Error in myfree(): This chunk was never allocated. File: %s, Line: %d\n", file, line);
+        return;
+    }
+
+    // pointer attempting to free a chunk with a pointer not at the start of a chunk
+    else if (target[-1] != '~' || target[-6] != '~') {
+        printf("Error in myfree(): Pointer selected not at the start of a chunk. File: %s, Line: %d\n", file, line);
+        return;
+    }
+
+    // catch all invalid pointer for any other cases
+    else {
+        printf("Error in myfree(): Not a valid pointer. File: %s, Line: %d\n", file, line);
     }
 }
 
@@ -153,7 +188,7 @@ void myfree(void* ptr, char *file, int line) {
 // 1    1
 // 2    0
 // 3    0
-// 4    12
+// 4    6
 // 5    ~
 // 6    data
 // 7    data
@@ -161,12 +196,12 @@ void myfree(void* ptr, char *file, int line) {
 // 9    data
 // 10   data
 // 11   data
-// 12   data
-// 13   data
-// 14   data
-// 15   data
-// 16   data
-// 17   data
+// 12   ~
+// 13   0
+// 14   0
+// 15   0
+// 16   0
+// 17   ~
 // 18   ~
 // 19   1
 // 20   0
@@ -176,8 +211,12 @@ void myfree(void* ptr, char *file, int line) {
 // 24   data
 // 25   data
 // 26   ~
-// 27   0
-// 28   4
+// 27   1
+// 28   0
 // 29   0
-// 30   64
-// 31   ~  
+// 30   4
+// 31   ~
+// 32   data
+// 33   data
+// 34   data
+// 35   data
