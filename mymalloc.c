@@ -126,7 +126,7 @@ void *mymalloc (size_t size, char *file, int line) {
         int metadataSizeInt = metadataSizeToIntSize(metadata);
         
         // This runs if a free chunk of a sufficient size has been found
-        if ((memory[metadata+1] == 0 || -1) && (metadataSizeInt-6 > intSize)) {
+        if ((memory[metadata+1] == 0 || memory[metadata+1] == -1) && (metadataSizeInt-6 > intSize)) {
 
             printf("----------\nmymalloc(): Found suitable chunk at memory[%d]\n", metadata); // debugging print line
 
@@ -151,7 +151,7 @@ void *mymalloc (size_t size, char *file, int line) {
         }
         // This runs if the current chunk is already occupied or if it is unoccupied and of insufficient size
         // Goes to next chunk
-        else if (memory[metadata+1] == 1 || ((memory[metadata+1] == 0 || -1) && metadataSizeInt-6 <= intSize)) {
+        else if (memory[metadata+1] == 1 || ((memory[metadata+1] == 0 || memory[metadata+1] == -1) && metadataSizeInt-6 <= intSize)) {
             metadata = metadata + metadataSizeInt + 6;
         }
         else {
@@ -210,6 +210,7 @@ void myfree(void* ptr, char *file, int line) {
     // Catch all invalid pointer for any other cases
     else {
         printf("Error in myfree(): Not a valid pointer. File: %s, Line: %d.\n", file, line);
+        return;
     }
 }
 
