@@ -1,8 +1,16 @@
-all: malloc 
+CC = gcc
+CCFLAGS = -g
 
-malloc:
-	gcc -g -c mymalloc.c 
-	gcc mymalloc.o memgrind.c
+all: memgrind
+
+memgrind: mymalloc.o memgrind.o
+	$(CC) $(CCFLAGS) -o memgrind mymalloc.o memgrind.o
+
+mymalloc.o: mymalloc.c mymalloc.h
+	$(CC) $(CCFLAGS) -c mymalloc.c
+
+memgrind.o: memgrind.c
+	$(CC) $(CCFLAGS) -c memgrind.c
 
 clean:
-	rm -f malloc *.o 
+	rm -f memgrind mymalloc.o memgrind.o
