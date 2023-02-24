@@ -44,27 +44,32 @@ void coalescing(char *file, int line) {
 
         if (isPrevValid == 0) {
             printf("Error in coalescing(): invalid prevMetadata found at memory[%d]. File: %s. Line: %d.\n", prevMetadata, file, line);
+            // printMem();
+            // exit(1);
             return;
         }
         if (isNextValid == 0) {
             printf("Error in coalescing(): invalid nextMetadata found at memory[%d]. File: %s. Line: %d.\n", nextMetadata, file, line);
+            // printMem();
+            // exit(1);
             return;
         }
 
         // This runs if two adjacent chunks are free, combining them and setting the nextMetadata value
         if ((memory[prevMetadata+1] == 0 || memory[prevMetadata+1] == -1) && (memory[nextMetadata+1] == 0 || memory[nextMetadata+1] == -1)) {
 
-            printf("Coalescing(): Joining two free chunks at memory[%d] and memory[%d]\n", prevMetadata, nextMetadata); // debugging print line
-
+            //printf("Coalescing(): Joining two free chunks at memory[%d] and memory[%d]\n", prevMetadata, nextMetadata); // debugging print line
+            // printMem();
+            // printf("----------------------------------------\n");
             int newChunkSize = metadataSizeToIntSize(prevMetadata) + metadataSizeToIntSize(nextMetadata) + 6;
             for (int i = 0; i < 6; i++) {
                 memory[nextMetadata+i] = 0;
             }
             intSizeToMetadataSize(newChunkSize, prevMetadata);
-            nextMetadata = metadataSizeToIntSize(prevMetadata) + 6;
-        }
-        // This runs if the two adjacent chunks are not both free
-        else {
+            // printMem();
+            nextMetadata = prevMetadata + metadataSizeToIntSize(prevMetadata) + 6;
+            // printf("P: %d, N: %d.\n", prevMetadata, nextMetadata);
+        } else {
             prevMetadata = nextMetadata;
             nextMetadata = nextMetadata + metadataSizeToIntSize(nextMetadata) + 6;
         }
@@ -74,6 +79,16 @@ void coalescing(char *file, int line) {
 void eraseAll() {
     for (int i = 0; i < 4096; i++) {
         memory[i] = 0;
+    }
+}
+// printing
+void printMem() {
+    for (int i = 0; i < 75; i++) {
+        if (memory[i] == 126) {
+            printf("~\n");
+        } else {
+            printf("%d\n", memory[i]);
+        }
     }
 }
 
@@ -128,7 +143,7 @@ void *mymalloc (size_t size, char *file, int line) {
         // This runs if a free chunk of a sufficient size has been found
         if ((memory[metadata+1] == 0 || memory[metadata+1] == -1) && ((metadataSizeInt-6 > intSize) || (metadataSizeInt == intSize))) {
 
-            printf("mymalloc(): Found suitable chunk at memory[%d]\n", metadata); // debugging print line
+            //printf("mymalloc(): Found suitable chunk at memory[%d]\n", metadata); // debugging print line
 
             foundSuitableChunk = 1;
             int chunkLeftOverSize = metadataSizeInt - intSize;
@@ -145,7 +160,7 @@ void *mymalloc (size_t size, char *file, int line) {
                 memory[metadata+6+intSize+5] = '~';
             }
 
-            printf("mymalloc(): Returning pointer to memory[%d]\n", metadata+6); // debugging print line
+            //printf("mymalloc(): Returning pointer to memory[%d]\n", metadata+6); // debugging print line
 
             return returnPointer;
         }
@@ -183,7 +198,7 @@ void myfree(void* ptr, char *file, int line) {
     if (target[-1] == '~' && target[-6] == '~' && target[-5] == 1 ) {
         target[-5] = -1;
 
-        printf("myfree(): Chunk successfully freed!\n"); // debugging print line
+        //printf("myfree(): Chunk successfully freed!\n"); // debugging print line
 
         coalescing(file, line);
         return;
