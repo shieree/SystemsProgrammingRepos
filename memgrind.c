@@ -150,17 +150,40 @@ void testC() {
 
     /* 
         Test D:  
-        3. Randomly choose between
-            -> Allocating a 1-byte chunk and storing the pointer in an array
-            -> Deallocating one of the chunks in the array (if any)
-            Repeat until you have called malloc() 120 times, then free all remaining allocated chunks.
+        Testing mymalloc.c on if it can handle allocating growing byte sizes increasing by the power of 2 up to 256.
+        Also completes the task 50 times to maintain continuity.
 
     */
 
 void testD(){
+	struct timeval begin, end;
+	gettimeofday(&begin, NULL);
+	long int time_total = 0;
 
-// this is the one i'm working on rn but bc it's not done the code won't compile prop with it so i'll add it to github when im done done
+    int i,j;
+    int byteSize;
+    char *arraytestD[MAX];
+
+        for (i = 0; i < 50; i++) { /*perform the task 50 times*/
+
+            for(j = 0; j < 50; j++) {
+                for(byteSize = 0; byteSize <= 128; byteSize ++){  
+                byteSize = byteSize << 1; 
+
+                arraytestD[j] = (char *)malloc(byteSize);
+                free(arraytestD[j]);
+                }  
+            }
+
+        gettimeofday(&end, NULL);
+	  	time_total = time_total + ((end.tv_sec * 1000000 + end.tv_usec) - (begin.tv_sec * 1000000 + begin.tv_usec));
+
+        }
+
+        long int average_time = time_total/100;	
+        printf("Test D - Average time for completion: %ld microseconds\n", average_time);	
 }
+
 
     /*_______________________________Test_E_______________________________________*/
 
@@ -222,7 +245,6 @@ void testE(){
         printf("Test E - Average time for completion: %ld microseconds\n", average_time);	
 
 }
-
 
 int main( int number_of_args, char* arg_list[] ) {
 
