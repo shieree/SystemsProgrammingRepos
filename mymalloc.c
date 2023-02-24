@@ -43,11 +43,11 @@ void coalescing(char *file, int line) {
         int isNextValid = isMetadataValid(nextMetadata);
 
         if (isPrevValid == 0) {
-            printf("Error in coalescing(): invalid metadata found at memory[%d]. File: %s. Line: %d.\n", prevMetadata, file, line);
+            printf("Error in coalescing(): invalid prevMetadata found at memory[%d]. File: %s. Line: %d.\n", prevMetadata, file, line);
             return;
         }
         if (isNextValid == 0) {
-            printf("Error in coalescing(): invalid metadata found at memory[%d]. File: %s. Line: %d.\n", nextMetadata, file, line);
+            printf("Error in coalescing(): invalid nextMetadata found at memory[%d]. File: %s. Line: %d.\n", nextMetadata, file, line);
             return;
         }
 
@@ -126,9 +126,9 @@ void *mymalloc (size_t size, char *file, int line) {
         int metadataSizeInt = metadataSizeToIntSize(metadata);
         
         // This runs if a free chunk of a sufficient size has been found
-        if ((memory[metadata+1] == 0 || memory[metadata+1] == -1) && (metadataSizeInt-6 > intSize)) {
+        if ((memory[metadata+1] == 0 || memory[metadata+1] == -1) && ((metadataSizeInt-6 > intSize) || (metadataSizeInt == intSize))) {
 
-            printf("----------\nmymalloc(): Found suitable chunk at memory[%d]\n", metadata); // debugging print line
+            printf("mymalloc(): Found suitable chunk at memory[%d]\n", metadata); // debugging print line
 
             foundSuitableChunk = 1;
             int chunkLeftOverSize = metadataSizeInt - intSize;
