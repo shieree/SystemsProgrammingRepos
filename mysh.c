@@ -4,9 +4,11 @@
 #include <string.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #define BUFSIZE         128
-#define NUM_COMMANDS    6
+#define NUM_COMMANDS    4
 #define DEBUG           1
 
 /*  To do:
@@ -44,6 +46,15 @@
                 file should be created if it doesn't exist or truncated if it does. use mode 0640 when creating
     use dup2() in child process to redefine fd 0 or 1 before calling execv()
     if unable to open files, report error and exit(1)
+
+    halt batch mode if syntax error (e.g. < not followed by a word)
+    if cd gets more arguments than expected, print error
+
+    write() for the prompt?
+
+    wildcard:   Given a path with a wildcard, determine which directory you need to check, then open the directory
+                find entries whose names begin with the text before the star and end with the text after the star, and add those entries to the argument list
+                If no entries match, add the original text.
 
     fixed:
         fix error when files don't have a terminating \n
@@ -264,8 +275,8 @@ void execute(char** tokens) {
     }
 
     // Array of known commands used to compare against a given token
-    char commands[NUM_COMMANDS][10] = { "<", ">", "|", "cd", "pwd", "exit"};
-    //                                   0    1    2    3      4      5
+    char commands[NUM_COMMANDS][10] = { "cd", "pwd", "exit", "echo"};
+    //                                   0      1      2       3
 
     // Main execute() loop. Cross references token against the list of known commands
     // If the token matches a known command, set commandID to its matching index and carry out the specified command
@@ -282,37 +293,83 @@ void execute(char** tokens) {
 
         switch (commandID) {
             
-            case -1: ;
-                printf("Error in execute(): \"%s\" not recognized as a command at token[%d]\n", tokens[i], i);
-                break;
+            // If the token doesn't match any known commands in the commands[] array, this runs
+            // The token is treated as a path or bare name
+            case -1: ; 
 
-            // IN PROGRESS
+                // This counts the number of arguments for the given token and checks for redirects or sub-commands
+                if (DEBUG) {printf("Looking for file %s:\n", tokens[i]);}
+                int redirectOrSubIndex = -1;
+                int numArguments = 0;
+                for (int k = i; k < numTokens; k++) {
+                    if (strcmp(tokens[k], "<") == 0 || strcmp(tokens[k], ">") == 0 || strcmp(tokens[k], "|") == 0) {
+                        redirectOrSubIndex = k;
+                        break;
+                    } else {
+                        numArguments++;
+                    }
+                }
 
-            case 0: ; // token: "<"
-                break;
+                // This creates a new string array and copies the token's arguments to it
+                char** newArgv = malloc(numArguments * sizeof(char*));
+                int newArgvIndex = 0;
+                int tokensNewIndex = i;
+                while (newArgvIndex < numArguments) {
+                    newArgv[newArgvIndex++] = tokens[tokensNewIndex++];
+                }
+                
+                if (DEBUG) {
+                    for (int k = 0; k < numArguments; k++) {
+                        printf("newArgv[%d]: %s\n", k, newArgv[k]);
+                    }
+                }
 
-            case 1: ; // token: ">"
-                break;
+                // REMOVE BEFORE SUBMITTING
+                char directoryTest[100] = "C:\\Users\\Patrick\\Documents\\ComputerScience\\CS214\\test\\";
+                strcat(directoryTest, tokens[i]);
 
-            case 2: ; // token: "|"
+                char directory1[50] = "/user/local/sbin/";  char directory2[50] = "/user/local/bin/";
+                char directory3[50] = "/user/sbin/";        char directory4[50] = "/user/bin/";
+                char directory5[50] = "/sbin/";             char directory6[50] = "/bin/";
+                strcat(directory1, tokens[i]); strcat(directory2, tokens[i]); strcat(directory3, tokens[i]);
+                strcat(directory4, tokens[i]); strcat(directory5, tokens[i]); strcat(directory6, tokens[i]);
+                struct stat bufferStat;
+                int bareDirectoriesCount = 7;
+                char* bareDirectories[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
+                int bareDirectoryFound = -1;
+                for (int k = 0; k < bareDirectoriesCount; k++) {
+                    if (stat(bareDirectories[k], &bufferStat) == 0) {
+                        bareDirectoryFound = k;
+                        break;
+                    }
+                }
+                printf("file found at bareDirec[%d]\n", bareDirectoryFound);
                 break;
             
-            case 3: ; // token: "cd"
+            case 0: ; // "cd"
                 char* cd_path = tokens[i+1];
-                chdir(cd_path);
-                if (DEBUG) {printf("tokens[%d]: cd %s\n", i, cd_path);}
+                int cd_return = chdir(cd_path);
+                if (DEBUG) {printf("tokens[%d]: cd %s, return: %d\n", i, cd_path, cd_return);}
                 i++;
+                if (cd_return == -1) {
+                    perror("Error");
+                    errno = 1;
+                }
                 break;
             
-            case 4: ; // token: "pwd"
+            case 1: ; // "pwd"
                 char current_directory[100];
-                //if (DEBUG) {printf("tokens[%d]: pwd\n", i);} REMOVE
                 printf("%s\n", getcwd(current_directory, 100));
                 break;
             
-            case 5: ; // token: "exit"
-                if (DEBUG) {printf("tokens[%d]: exiting!\n", i);}
+            case 2: ; // "exit"
+                printf("mySh: exiting\n");
                 exit(0);
+                break;
+            
+            case 3: ; // "echo"
+                if (DEBUG) {printf("tokens[%d]: exiting!\n", i);}
+                
                 break;
             
         }
@@ -321,9 +378,12 @@ void execute(char** tokens) {
 
 // This helper function allows "mySh> " to print before the standard input when in interactive mode
 int myShPrinter(int interactive_mode) {
-    
-    if (interactive_mode == 1) {
+
+    if (interactive_mode == 1 && errno == 0) {
         printf("mySh> ");
+    } else if (interactive_mode == 1 && errno != 0) {
+        printf("!mySh> ");
+        errno = 0;
     }
     return 1;
 }
