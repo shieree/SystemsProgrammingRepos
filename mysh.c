@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
+// #include <sys/wait.h>
 
 #define BUFSIZE         128
 #define NUM_COMMANDS    4
@@ -340,6 +340,11 @@ void execute(char** tokens) {
                     }
                 }
 
+                i = i + numArguments;
+                if (redirectOrSubIndex != -1) {
+                    i = i + 2;
+                }
+
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
                 char directoryTest[100] = "C:\\Users\\Patrick\\Documents\\ComputerScience\\CS214\\test\\";
                 strcat(directoryTest, tokens[i]);
@@ -402,7 +407,9 @@ void execute(char** tokens) {
                 // if (WIFEXITED(wait_status)) {
                 //     printf("child exited with %d\n", WEXITSTATUS(wait_status));
                 // }
-                
+
+                free(newArgv);
+
                 break;
             
             case 0: ; // "cd"
@@ -433,6 +440,11 @@ void execute(char** tokens) {
             
         }
     }
+
+    for (int i = 0; i < numTokens+1; i++) {
+        free(tokens[i]);
+    }
+    free(tokens);
 }
 
 // This helper function allows "mySh> " to print before the standard input when in interactive mode
@@ -497,7 +509,7 @@ void input(int input) {
                 execute(tokens);
                 
                 free(line);
-                free(tokens);
+                // free(tokens); // freed in execute()
                 prevIndex = i+1;
             }
         }
