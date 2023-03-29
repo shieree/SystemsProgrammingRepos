@@ -342,7 +342,7 @@ void execute(char** tokens) {
 
                 i = i + numArguments;
                 if (redirectOrSubIndex != -1) {
-                    i = i + 2;
+                    i = i + 1;
                 }
 
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
