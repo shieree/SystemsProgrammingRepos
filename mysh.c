@@ -6,62 +6,37 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
-// #include <sys/wait.h>
+#include <sys/wait.h>
 
 #define BUFSIZE         128
-#define NUM_COMMANDS    4
 #define DEBUG           1
 
-/*  To do:
+/*  
+    ~~ To do for Patrick: ~~
     
-    reading and prompting:
+    reading
         account for when the buffer does not grab an entire line
         account for when the buffer splits a line, and pass the leftovers into the next read() call
-        "!mysh> " if the last command failed
-
-    commands to implement:
-
-        cd:         chdir(path_to_new_directory)
-        pwd:        getcwd()
-        exit:       if no error, exit(0). if error, print error (perror()) to standard error, exit(1), and !mysh
-        cat:    
-        echo:   
-        /:          first token being "/" means it is a path to an executable program
-                    fork(), execv(), and wait() should be used
-                    if the program cannot be executed, print error and set exit(1)
-    
-    if the command is not a built-in and is not a path, mysh should check the following directories for the file:
-        /usr/local/sbin
-        /usr/local/bin
-        /usr/sbin
-        /usr/bin
-        /sbin
-        /bin
-    use stat() to check existence. if not opened set exit(1) and print error
-    if file can't be executed do not look in other directories
-
-
-    |:          combines sub-commands
-    foo < bar:  bar considered a path and is used as standard input for foo, and is not included as an argument
-    foo > bar:  same as above except bar is standard output
-                file should be created if it doesn't exist or truncated if it does. use mode 0640 when creating
-    use dup2() in child process to redefine fd 0 or 1 before calling execv()
-    if unable to open files, report error and exit(1)
-
+    implement piping
+    implement changing both standard input and output at same time
     halt batch mode if syntax error (e.g. < not followed by a word)
     if cd gets more arguments than expected, print error
-
     write() for the prompt?
+    
+    extensions (choose 2):
+        escape sequences
+        home directory
+        combining with && and ||
+
+    ~~ To do for Shieree: ~~
 
     wildcard:   Given a path with a wildcard, determine which directory you need to check, then open the directory
                 find entries whose names begin with the text before the star and end with the text after the star, and add those entries to the argument list
                 If no entries match, add the original text.
 
-    fixed:
-        fix error when files don't have a terminating \n
-        foo<bar is three tokens NOT separated by spaces
-        "!mysh> " if the last command failed
+    ~~ Things to keep in mind: ~~
 
+    when importing Windows text files to iLab for testing purposes, the text files may not work properly. write the text files in iLab if there are issues
 
 */
 
@@ -277,21 +252,23 @@ void execute(char** tokens) {
     }
 
     // Array of known commands used to compare against a given token
-    char commands[NUM_COMMANDS][10] = { "cd", "pwd", "exit", "echo"};
-    //                                   0      1      2       3
+    char commands[3][10] = { "cd", "pwd", "exit"};
+    //                                   0      1      2
 
     // Main execute() loop. Cross references token against the list of known commands
     // If the token matches a known command, set commandID to its matching index and carry out the specified command
     // If the token does not match a command, it is a file name and a loop searches for its following arguments and redirects
-    int commandID = -1;
     for (int i = 0; i < numTokens; i++) {
+        if (DEBUG) {printf("token:          %s\n", tokens[i]);}
         int commandID = -1;
-        for (int j = 0; j < NUM_COMMANDS; j++) {
+        for (int j = 0; j < 3; j++) {
             if (strcmp(tokens[i], commands[j]) == 0) {
                 commandID = j;
                 break;
             }
         }
+
+        // if (DEBUG) {printf("commandID: %d\n", commandID);}
 
         switch (commandID) {
             
@@ -300,7 +277,6 @@ void execute(char** tokens) {
             case -1: ; 
 
                 // This counts the number of arguments for the given token and checks for redirects or sub-commands
-                if (DEBUG) {printf("Looking for file %s:\n", tokens[i]);}
                 int redirectOrSubIndex = -1;
                 int numArguments = 0;
                 for (int k = i; k < numTokens; k++) {
@@ -327,21 +303,26 @@ void execute(char** tokens) {
                 }
 
                 // This creates a new string array and copies the token's arguments to it for use in passing to execv()
-                char** newArgv = malloc(numArguments * sizeof(char*));
+                char** newArgv = malloc((numArguments+1) * sizeof(char*));
                 int newArgvIndex = 0;
                 int tokensNewIndex = i;
                 while (newArgvIndex < numArguments) {
                     newArgv[newArgvIndex++] = tokens[tokensNewIndex++];
                 }
+                newArgv[numArguments] = NULL;
                 
                 if (DEBUG) {
-                    for (int k = 0; k < numArguments; k++) {
-                        printf("newArgv[%d]: %s\n", k, newArgv[k]);
+                    printf("newArgv:\n");
+
+                    for (int k = 0; k < numArguments+1; k++) {
+                        printf("                ");
+                        printf("[%d]: %s\n", k, newArgv[k]);
                     }
+                    printf("----------------\n");
                 }
 
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
-                char directoryTest[100] = "C:\\Users\\Patrick\\Documents\\ComputerScience\\CS214\\test\\";
+                char directoryTest[100] = "/common/home/pfb34/214/myShell/";
                 strcat(directoryTest, tokens[i]);
 
                 // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
@@ -356,9 +337,9 @@ void execute(char** tokens) {
                 char* bareDirectory[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
                 int bareDirectoryFound = -1;
                 
-                for (int o = 0; o < bareDirectoriesCount; o++) {
-                    printf("bareDirectory[%d]: %s\n", o, bareDirectory[o]);
-                }
+                // for (int o = 0; o < bareDirectoriesCount; o++) {
+                //     printf("bareDirectory[%d]: %s\n", o, bareDirectory[o]);
+                // }
 
                 for (int k = 0; k < bareDirectoriesCount; k++) {
                     if (stat(bareDirectory[k], &bufferStat) == 0) {
@@ -371,7 +352,6 @@ void execute(char** tokens) {
                     if (bareDirectoryFound == -1) {
                         printf("file not found in bareDirectory\n");
                     } else {
-                        printf("bareDirectoryFound: %d\n", bareDirectoryFound);
                         char* stringToPrint;
                         switch (bareDirectoryFound) {
                             case 0: stringToPrint = directory1; break;
@@ -382,7 +362,7 @@ void execute(char** tokens) {
                             case 5: stringToPrint = directory6; break;
                             case 6: stringToPrint = directoryTest; break; // REMOVE BEFORE SUBMISSION
                         }
-                        printf("file found in: %s\n", stringToPrint);
+                        printf("file found in:  %s\n", stringToPrint);
                     }
                 }
 
@@ -401,23 +381,32 @@ void execute(char** tokens) {
                 }
 
                 // fork(), create a child process, execute the child with path_name and newArgv, and wait
-                // Note: does not apparently work on windows since <sys/wait.h> cannot be included. Will have to be worked on in a linux environment
-                
-                // int pid = fork();
-                // if (pid == -1) {
-                //     perror("fork");
-                //     exit(EXIT_FAILURE);
-                // }
-                // if (pid == 0) {
-                //     execv(path_name, newArgv);
-                //     printf("fork(): should not be seeing this!\n");
-                //     exit(EXIT_FAILURE);
-                // }
-                // int wait_status;
-                // int tpid = wait(&wait_status);
-                // if (WIFEXITED(wait_status)) {
-                //     printf("child exited with %d\n", WEXITSTATUS(wait_status));
-                // }
+                // Note: the following section will throw errors when compiled on Windows since <sys/wait.h> is not available
+                struct stat bufferStat2;
+                if (stat(path_name, &bufferStat2) == 0) {
+                    int pid = fork();
+                    if (pid == -1) {
+                        perror("fork");
+                        exit(EXIT_FAILURE);
+                    }
+                    if (pid == 0) {
+                        if (DEBUG) {printf("path_name:      %s\n", path_name); printf("----------------\n");}
+                        execv(path_name, newArgv);
+                        perror("execv");
+                        exit(EXIT_FAILURE);
+                    }
+                    int wait_status;
+                    int tpid = wait(&wait_status);
+                    if (DEBUG) {
+                        if (WIFEXITED(wait_status)) {
+                            printf("child exited with %d\n", WEXITSTATUS(wait_status));
+                        }
+                    }
+                } else {
+                    perror("error");
+                }
+
+
 
                 free(newArgv);
 
@@ -448,12 +437,6 @@ void execute(char** tokens) {
                 printf("mySh: exiting\n");
                 exit(0);
                 break;
-            
-            case 3: ; // "echo"
-                if (DEBUG) {printf("tokens[%d]: exiting!\n", i);}
-                
-                break;
-            
         }
     }
 
@@ -465,11 +448,13 @@ void execute(char** tokens) {
 
 // This helper function allows "mySh> " to print before the standard input when in interactive mode
 int myShPrinter(int interactive_mode) {
-
+    // if (DEBUG) {printf("errno: %d, interactive_mode: %d\n", errno, interactive_mode);}
     if (interactive_mode == 1 && errno == 0) {
         printf("mySh> ");
+        fflush(stdout);
     } else if (interactive_mode == 1 && errno != 0) {
         printf("!mySh> ");
+        fflush(stdout);
         errno = 0;
     }
     return 1;
@@ -482,43 +467,57 @@ void input(int input) {
     if (input == 0) {
         interactive_mode = 1;
     }
-    
+
     // Create the buffer
     char* buffer = malloc(BUFSIZE*sizeof(char));
     int bytes = 0;
     int prevIndex = 0;
+    myShPrinter(interactive_mode);
+    bytes = read(input, buffer, BUFSIZE);
 
     // checking the conditions of the while loop simultaneous reads from the input and also prints "mySh> " if in interactive mode
-    while ((myShPrinter(interactive_mode)) && (bytes = read(input, buffer, BUFSIZE)) > 0) {
+    // while ((myShPrinter(interactive_mode)) && (bytes = read(input, buffer, BUFSIZE)) > 0) {
+    while (bytes > 0) {
 
         // Debug printing to show the contents of buffer[]
         if (DEBUG) {
             printf("\nDEBUG MODE ENABLED\n");
             printf("----------------\n");
             printf("bytes read:     %d\n", bytes);
-            printf("buffer:         ");
+            printf("buffer:\n");
+            // printf("                ");
             for (int i = 0; i < bytes; i++) {
                 if (buffer[i] == '\n') {
-                    printf("\\n\\");
+                    printf("buffer[%d]: \\n\\ \n", i);
                 } else {
-                    printf("%c", buffer[i]);
+                    printf("buffer[%d]: %c\n", i, buffer[i]);
                 }
             } printf("\n");
-            printf("----------------\n");
+            printf("\n----------------\n");
         }
 
         // Loop that iterates through the buffer, parses it by line, and then tokenizes and executes each line after parsing
-        for (int i = 0; i <= bytes; i++) {
-            if ((buffer[i] == '\n' && i != bytes) || (i == bytes && interactive_mode == 0)) {
+        for (int i = 0; i < bytes; i++) {
+            
+            // windows version of this next line: if ((buffer[i] == '\n' && i != bytes) || (i == bytes && interactive_mode == 0)) {
+            // linux version does not need the extra stuff because all linux text files end with '\n' but windows .txts don't (I think?)
+            if (buffer[i] == '\n') {
                 
-                char* line = malloc((i - prevIndex) * sizeof(char));
+                if (DEBUG) {printf("i: %d, prevIndex: %d\n", i, prevIndex);}
+                int length = (i - prevIndex);
+                // if (interactive_mode == 0) {
+                //     length--;
+                // }
+
+                char* line = malloc(length * sizeof(char));
                 int k = 0;
 
                 for (int j = prevIndex; j < i; j++) {
                     line[k++] = buffer[j];
                 }
 
-                char** tokens = tokenizer(line, (i - prevIndex));
+                // if(DEBUG) {printf("passing line of length %d into tokenizer()\n", length);}
+                char** tokens = tokenizer(line, length);
 
                 // printf("pointer in input(): %p\n", &tokens);
                 
@@ -529,8 +528,11 @@ void input(int input) {
                 prevIndex = i+1;
             }
         }
+        
+        myShPrinter(interactive_mode);
         prevIndex = 0;
         memset(buffer, 0, BUFSIZE);
+        bytes = read(input, buffer, BUFSIZE);
     }
 
     free(buffer);
@@ -539,6 +541,7 @@ void input(int input) {
 
 // -----------------------------------------------------------------------------------------------------------
 
+// Main function filters interactive mode and batch mode, depending on the number of provided arguments. All arguments past argv[1] are discarded in batch mode
 int main(int argc, char* argv[]) {
 
     if (argc == 1) { // Interactive mode, where there are no provided arguments
