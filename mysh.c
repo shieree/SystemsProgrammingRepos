@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #define BUFSIZE         128
 #define NUM_COMMANDS    4
@@ -59,6 +60,7 @@
     fixed:
         fix error when files don't have a terminating \n
         foo<bar is three tokens NOT separated by spaces
+        "!mysh> " if the last command failed
 
 
 */
@@ -310,7 +312,21 @@ void execute(char** tokens) {
                     }
                 }
 
-                // This creates a new string array and copies the token's arguments to it
+                // If there is a file redirect or pipe following the path/bare token, this runs
+                // This uses dup2() to change standard input/outputs for use further down
+                if (redirectOrSubIndex != -1) {
+                    if (strcmp(tokens[redirectOrSubIndex], "<") == 0) {
+                        int fd_newInput = open(tokens[redirectOrSubIndex+1], O_RDONLY);
+                        dup2(fd_newInput, STDIN_FILENO);
+                    } else if (strcmp(tokens[redirectOrSubIndex], ">") == 0) {
+                        int fd_newOutput = open(tokens[redirectOrSubIndex+1], O_WRONLY | O_CREAT | O_TRUNC, 0640);
+                        dup2(fd_newOutput, STDOUT_FILENO);
+                    } else if (strcmp(tokens[redirectOrSubIndex], "|") == 0) {
+                        // IMPLEMENT PIPING
+                    }
+                }
+
+                // This creates a new string array and copies the token's arguments to it for use in passing to execv()
                 char** newArgv = malloc(numArguments * sizeof(char*));
                 int newArgvIndex = 0;
                 int tokensNewIndex = i;
@@ -324,10 +340,12 @@ void execute(char** tokens) {
                     }
                 }
 
-                // REMOVE BEFORE SUBMITTING
+                // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
                 char directoryTest[100] = "C:\\Users\\Patrick\\Documents\\ComputerScience\\CS214\\test\\";
                 strcat(directoryTest, tokens[i]);
 
+                // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
+                // not fully finished
                 char directory1[50] = "/user/local/sbin/";  char directory2[50] = "/user/local/bin/";
                 char directory3[50] = "/user/sbin/";        char directory4[50] = "/user/bin/";
                 char directory5[50] = "/sbin/";             char directory6[50] = "/bin/";
@@ -335,15 +353,56 @@ void execute(char** tokens) {
                 strcat(directory4, tokens[i]); strcat(directory5, tokens[i]); strcat(directory6, tokens[i]);
                 struct stat bufferStat;
                 int bareDirectoriesCount = 7;
-                char* bareDirectories[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
+                char* bareDirectory[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
                 int bareDirectoryFound = -1;
                 for (int k = 0; k < bareDirectoriesCount; k++) {
-                    if (stat(bareDirectories[k], &bufferStat) == 0) {
+                    if (stat(bareDirectory[k], &bufferStat) == 0) {
                         bareDirectoryFound = k;
                         break;
                     }
                 }
-                printf("file found at bareDirec[%d]\n", bareDirectoryFound);
+                errno = 0;
+                if (DEBUG) {
+                    if (bareDirectoryFound == -1) {
+                        printf("file not found in bareDirectory\n");
+                    } else {
+                        printf("bareDirectoryFound: %d\n", bareDirectoryFound);
+                    }
+                }
+
+                // If the file was found in a bare directory, set path_name to be that directory/token[i]
+                char* path_name = tokens[i];
+                if (bareDirectoryFound != -1) {
+                    switch (bareDirectoryFound) {
+                        case 0: path_name = directory1; break;
+                        case 1: path_name = directory2; break;
+                        case 2: path_name = directory3; break;
+                        case 3: path_name = directory4; break;
+                        case 4: path_name = directory5; break;
+                        case 5: path_name = directory6; break;
+                        case 6: path_name = directoryTest; break; // REMOVE BEFORE SUBMISSION
+                    }
+                }
+
+                // fork(), create a child process, execute the child with path_name and newArgv, and wait
+                // Note: does not apparently work on windows since <sys/wait.h> cannot be included. Will have to be worked on in a linux environment
+                
+                // int pid = fork();
+                // if (pid == -1) {
+                //     perror("fork");
+                //     exit(EXIT_FAILURE);
+                // }
+                // if (pid == 0) {
+                //     execv(path_name, newArgv);
+                //     printf("fork(): should not be seeing this!\n");
+                //     exit(EXIT_FAILURE);
+                // }
+                // int wait_status;
+                // int tpid = wait(&wait_status);
+                // if (WIFEXITED(wait_status)) {
+                //     printf("child exited with %d\n", WEXITSTATUS(wait_status));
+                // }
+                
                 break;
             
             case 0: ; // "cd"
@@ -352,7 +411,7 @@ void execute(char** tokens) {
                 if (DEBUG) {printf("tokens[%d]: cd %s, return: %d\n", i, cd_path, cd_return);}
                 i++;
                 if (cd_return == -1) {
-                    perror("Error");
+                    perror("cd");
                     errno = 1;
                 }
                 break;
@@ -467,7 +526,7 @@ int main(int argc, char* argv[]) {
         int fd_b = open(argv[1], O_RDONLY);
 
         if (fd_b == -1) {
-            printf("Error in mysh: unable to open specified file.\n");
+            perror("mySh");
             exit(EXIT_FAILURE);
         }
 
