@@ -340,26 +340,26 @@ void execute(char** tokens) {
                     }
                 }
 
-                i = i + numArguments;
-                if (redirectOrSubIndex != -1) {
-                    i = i + 1;
-                }
-
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
                 char directoryTest[100] = "C:\\Users\\Patrick\\Documents\\ComputerScience\\CS214\\test\\";
                 strcat(directoryTest, tokens[i]);
 
                 // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
                 // not fully finished
-                char directory1[50] = "/user/local/sbin/";  char directory2[50] = "/user/local/bin/";
-                char directory3[50] = "/user/sbin/";        char directory4[50] = "/user/bin/";
-                char directory5[50] = "/sbin/";             char directory6[50] = "/bin/";
+                char directory1[100] = "/usr/local/sbin/";  char directory2[100] = "/usr/local/bin/";
+                char directory3[100] = "/usr/sbin/";        char directory4[100] = "/usr/bin/";
+                char directory5[100] = "/sbin/";            char directory6[100] = "/bin/";
                 strcat(directory1, tokens[i]); strcat(directory2, tokens[i]); strcat(directory3, tokens[i]);
                 strcat(directory4, tokens[i]); strcat(directory5, tokens[i]); strcat(directory6, tokens[i]);
                 struct stat bufferStat;
                 int bareDirectoriesCount = 7;
                 char* bareDirectory[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
                 int bareDirectoryFound = -1;
+                
+                for (int o = 0; o < bareDirectoriesCount; o++) {
+                    printf("bareDirectory[%d]: %s\n", o, bareDirectory[o]);
+                }
+
                 for (int k = 0; k < bareDirectoriesCount; k++) {
                     if (stat(bareDirectory[k], &bufferStat) == 0) {
                         bareDirectoryFound = k;
@@ -372,6 +372,17 @@ void execute(char** tokens) {
                         printf("file not found in bareDirectory\n");
                     } else {
                         printf("bareDirectoryFound: %d\n", bareDirectoryFound);
+                        char* stringToPrint;
+                        switch (bareDirectoryFound) {
+                            case 0: stringToPrint = directory1; break;
+                            case 1: stringToPrint = directory2; break;
+                            case 2: stringToPrint = directory3; break;
+                            case 3: stringToPrint = directory4; break;
+                            case 4: stringToPrint = directory5; break;
+                            case 5: stringToPrint = directory6; break;
+                            case 6: stringToPrint = directoryTest; break; // REMOVE BEFORE SUBMISSION
+                        }
+                        printf("file found in: %s\n", stringToPrint);
                     }
                 }
 
@@ -409,6 +420,11 @@ void execute(char** tokens) {
                 // }
 
                 free(newArgv);
+
+                i = i + numArguments;
+                if (redirectOrSubIndex != -1) {
+                    i = i + 1;
+                }
 
                 break;
             
