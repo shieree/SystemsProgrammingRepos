@@ -323,27 +323,33 @@ void execute(char** tokens) {
                     printf("----------------\n");
                 }
                 
-                // WILDCARD EXPANSION 
+                //Wildcard Expansion --------------------------------
                 char **found;
                 glob_t g;
-                g.gl_pathc = 0;
-                g.gl_pathv = NULL;
-                //int wildcard = 0;
 
-                //for (int a = 0; a < 100; a++) {
-
-                    for (int b = 0; b < sizeof(newArgv); b++) {
-
-                        if (newArgv[b] == '*') {
-                            found = g.gl_pathv;
-
-                            while (*found) {
-                                newArgv = realloc(found, sizeof(found));
-                                found++;
+                for (int b = 0; newArgv[b] != NULL; b++) {
+                    if(strchr(newArgv[b], '*') != NULL) {
+                        int ret = glob(newArgv[b], GLOB_NOCHECK, NULL, &g);
+                        if (ret == 0) {
+                            for (int i = 0; i < g.gl_pathc; i++) {
+                                found = g.gl_pathv;
+                                //while (found[g.gl_pathc] != NULL) {
+                                //    g.gl_pathc++;
+                                //}
+                                while (found[i] != NULL) {
+                                    i++;
+                                }
+                                newArgv = realloc(newArgv, (b + g.gl_pathc + 1) * sizeof(char*));
+                                for (int c = 0; c < g.gl_pathc; c++) {
+                                    newArgv[b + c] = strdup(found[c]);
+                                }
+                                newArgv[b + g.gl_pathc] = NULL;
                             }
                         }
+                        globfree(&g);
                     }
-                //}
+                }
+                
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
                 char directoryTest[100] = "/common/home/pfb34/214/myShell/";
                 strcat(directoryTest, tokens[i]);
