@@ -323,22 +323,27 @@ void execute(char** tokens) {
                     printf("----------------\n");
                 }
                 
-                glob_t gstruct;
-                int wildcard = 0;
-                // wildcards
-                for (int a = 0; a < numTokens; a++) {
-                    if (strcmp(tokens[a], "*") == 0) {
-                        if (tokens[a] == GLOB_NOMATCH) {
-                            printf("No matches\n");                            
+                // WILDCARD EXPANSION 
+                char **found;
+                glob_t g;
+                g.gl_pathc = 0;
+                g.gl_pathv = NULL;
+                //int wildcard = 0;
+
+                //for (int a = 0; a < 100; a++) {
+
+                    for (int b = 0; b < sizeof(newArgv); b++) {
+
+                        if (newArgv[b] == '*') {
+                            found = g.gl_pathv;
+
+                            while (*found) {
+                                newArgv = realloc(found, sizeof(found));
+                                found++;
+                            }
                         }
                     }
-                    else if (strcmp(tokens[a], '*') == 1) {
-                        printf("Found %zu filename matches\n", gstruct.gl_pathv);
-                        tokens[a] = gstruct.gl_pathv;
-
-                        printf("%s\n", tokens[a]);
-                    }
-                }
+                //}
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
                 char directoryTest[100] = "/common/home/pfb34/214/myShell/";
                 strcat(directoryTest, tokens[i]);
