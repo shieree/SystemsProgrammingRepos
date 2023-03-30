@@ -14,25 +14,22 @@
 /*  
     ~~ To do for Patrick: ~~
     
-    reading
-        account for when the buffer does not grab an entire line
-        account for when the buffer splits a line, and pass the leftovers into the next read() call
     implement piping
-    implement changing both standard input and output at same time
     halt batch mode if syntax error (e.g. < not followed by a word)
     if cd gets more arguments than expected, print error
+
+    Maybe address, if I have extra time:
+        account for when the buffer splits a line, and pass the leftovers into the next read call (can be lazily avoided by setting BUFSIZE to be very large)
+    
     write() for the prompt?
     
-    extensions (choose 2):
+    extensions (choose 1):
         escape sequences
-        home directory
         combining with && and ||
 
     ~~ To do for Shieree: ~~
 
-    wildcard:   Given a path with a wildcard, determine which directory you need to check, then open the directory
-                find entries whose names begin with the text before the star and end with the text after the star, and add those entries to the argument list
-                If no entries match, add the original text.
+    wildcard implementation
 
     ~~ Things to keep in mind: ~~
 
@@ -141,7 +138,6 @@ char** tokenizer(char* string, int length) {
 
     // Use a single loop to simultaneously find the longest token and store where the breaks are
     for (int i = 0; i < length; i++) {
-        // printf("tokenLength: %d, longestToken: %d\n", tokenLength, longestToken);
         if (i == length-1) {
             tokenLength++;
             if (tokenLength > longestToken) {
@@ -184,6 +180,7 @@ char** tokenizer(char* string, int length) {
         tokens[i] = malloc((longestToken+1) * sizeof(char));
     }
 
+    // Places the contents of string[] into tokens[][] with spaces as the row separators
     int row = 0;
     int col = 0;
     for (int i = 0; i <= length; i++) {
@@ -200,25 +197,65 @@ char** tokenizer(char* string, int length) {
         col++;
     }
 
+    // Home directory Extension
+    // Replaces "~/" with the home directory
+    for (int i = 0; i < (breakCounter+1); i++) {
+        if (tokens[i][0] == '~' && tokens[i][1] == '/') {
+            char* home_dir = getenv("HOME");
+            int j = 0;
+            while (home_dir[j] != '\0') {
+                j++;
+            }
+            if (DEBUG) {
+                printf("home directory: ");
+                for (int k = 0; k < j; k++) {
+                    printf("%c", home_dir[k]);
+                } printf("\n");
+            }
+            int l = 2;
+            tokens[i] = realloc(tokens[i], (longestToken+1+j));
+            tokens[i][j] = '/';
+            for (int k = j+1; k < longestToken+1+j; k++) {
+                tokens[i][k] = tokens[i][l++];
+            }
+            for (int k = 0; k < j; k++) {
+                tokens[i][k] = home_dir[k];
+            }
+            
+            // Debug printing that shows the newly replaced token
+            if (DEBUG) {
+                printf("replaced token[%d] with: ", i);
+                for (int k = 0; k < longestToken+1+j; k++) {
+                    if (tokens[i][k] == '\0') {
+                        printf("\\0");
+                    } else {
+                        printf("%c", tokens[i][k]);
+                    }
+                } printf("\n");
+            }
+        }
+    }
+
     tokens[breakCounter+1][0] = '\0';
 
     // Debug printing that shows the contents of the tokens array
-    if (DEBUG) {
-        printf("----------------\n");
-        printf("token(s): \n");
-        for (int i = 0; i < breakCounter+2; i++) {
-            printf("                ");
-            for (int j = 0; j < longestToken+1; j++) {
-                if (tokens[i][j] == '\0') {
-                    printf("\\0\n");
-                    break;
-                } else {
-                    printf("%c", tokens[i][j]);
-                }
-            }
-        }
-        printf("----------------\n");
-    }
+    // Replaced by same printing in execute()
+    // if (DEBUG) {
+    //     printf("----------------\n");
+    //     printf("token(s): \n");
+    //     for (int i = 0; i < breakCounter+2; i++) {
+    //         printf("                ");
+    //         for (int j = 0; j < longestToken+1; j++) {
+    //             if (tokens[i][j] == '\0') {
+    //                 printf("\\0\n");
+    //                 break;
+    //             } else {
+    //                 printf("%c", tokens[i][j]);
+    //             }
+    //         }
+    //     }
+    //     printf("----------------\n");
+    // }
 
     // printf("pointer in tokenizer(): %p\n", &tokens); REMOVE
 
@@ -241,6 +278,7 @@ void execute(char** tokens) {
     // Debug printing that shows the number of tokens and the input strings
     if (DEBUG) {
             int row = 0;
+            printf("----------------\n");
             printf("numTokens:      %d\n", numTokens);
             printf("exec string(s): \n");
             while (tokens[row][0] != '\0') {
@@ -253,7 +291,7 @@ void execute(char** tokens) {
 
     // Array of known commands used to compare against a given token
     char commands[3][10] = { "cd", "pwd", "exit"};
-    //                                   0      1      2
+    //                        0      1      2
 
     // Main execute() loop. Cross references token against the list of known commands
     // If the token matches a known command, set commandID to its matching index and carry out the specified command
@@ -279,26 +317,22 @@ void execute(char** tokens) {
                 // This counts the number of arguments for the given token and checks for redirects or sub-commands
                 int redirectOrSubIndex = -1;
                 int numArguments = 0;
+                // Checking for file redirects  || strcmp(tokens[k], "|") == 0
                 for (int k = i; k < numTokens; k++) {
-                    if (strcmp(tokens[k], "<") == 0 || strcmp(tokens[k], ">") == 0 || strcmp(tokens[k], "|") == 0) {
+                    if (strcmp(tokens[k], "<") == 0 || strcmp(tokens[k], ">") == 0) {
                         redirectOrSubIndex = k;
                         break;
                     } else {
                         numArguments++;
                     }
                 }
-
-                // If there is a file redirect or pipe following the path/bare token, this runs
-                // This uses dup2() to change standard input/outputs for use further down
-                if (redirectOrSubIndex != -1) {
-                    if (strcmp(tokens[redirectOrSubIndex], "<") == 0) {
-                        int fd_newInput = open(tokens[redirectOrSubIndex+1], O_RDONLY);
-                        dup2(fd_newInput, STDIN_FILENO);
-                    } else if (strcmp(tokens[redirectOrSubIndex], ">") == 0) {
-                        int fd_newOutput = open(tokens[redirectOrSubIndex+1], O_WRONLY | O_CREAT | O_TRUNC, 0640);
-                        dup2(fd_newOutput, STDOUT_FILENO);
-                    } else if (strcmp(tokens[redirectOrSubIndex], "|") == 0) {
-                        // IMPLEMENT PIPING
+                int pipesPresent = 0;
+                int pipesIndex = -1;
+                for (int k = i; k < numTokens; k++) {
+                    if (strcmp(tokens[k], "|") == 0) {
+                        pipesPresent = 1;
+                        pipesIndex = k;
+                        break;
                     }
                 }
 
@@ -322,8 +356,8 @@ void execute(char** tokens) {
                 }
 
                 // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
-                char directoryTest[100] = "/common/home/pfb34/214/myShell/";
-                strcat(directoryTest, tokens[i]);
+                // char directoryTest[100] = "/common/home/pfb34/214/myShell/";
+                // strcat(directoryTest, tokens[i]);
 
                 // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
                 // not fully finished
@@ -333,13 +367,9 @@ void execute(char** tokens) {
                 strcat(directory1, tokens[i]); strcat(directory2, tokens[i]); strcat(directory3, tokens[i]);
                 strcat(directory4, tokens[i]); strcat(directory5, tokens[i]); strcat(directory6, tokens[i]);
                 struct stat bufferStat;
-                int bareDirectoriesCount = 7;
-                char* bareDirectory[] = {directory1, directory2, directory3, directory4, directory5, directory6, directoryTest};
+                int bareDirectoriesCount = 6;
+                char* bareDirectory[] = {directory1, directory2, directory3, directory4, directory5, directory6};
                 int bareDirectoryFound = -1;
-                
-                // for (int o = 0; o < bareDirectoriesCount; o++) {
-                //     printf("bareDirectory[%d]: %s\n", o, bareDirectory[o]);
-                // }
 
                 for (int k = 0; k < bareDirectoriesCount; k++) {
                     if (stat(bareDirectory[k], &bufferStat) == 0) {
@@ -360,7 +390,6 @@ void execute(char** tokens) {
                             case 3: stringToPrint = directory4; break;
                             case 4: stringToPrint = directory5; break;
                             case 5: stringToPrint = directory6; break;
-                            case 6: stringToPrint = directoryTest; break; // REMOVE BEFORE SUBMISSION
                         }
                         printf("file found in:  %s\n", stringToPrint);
                     }
@@ -376,12 +405,11 @@ void execute(char** tokens) {
                         case 3: path_name = directory4; break;
                         case 4: path_name = directory5; break;
                         case 5: path_name = directory6; break;
-                        case 6: path_name = directoryTest; break; // REMOVE BEFORE SUBMISSION
                     }
                 }
 
                 // fork(), create a child process, execute the child with path_name and newArgv, and wait
-                // Note: the following section will throw errors when compiled on Windows since <sys/wait.h> is not available
+                // Note: the following section will throw errors when compiled on Windows since <sys/wait.h> is not available there
                 struct stat bufferStat2;
                 if (stat(path_name, &bufferStat2) == 0) {
                     int pid = fork();
@@ -391,12 +419,49 @@ void execute(char** tokens) {
                     }
                     if (pid == 0) {
                         if (DEBUG) {printf("path_name:      %s\n", path_name); printf("----------------\n");}
+                        // If there is a file redirect or pipe following the path/bare token, this runs
+                        // This uses dup2() to change standard input/outputs for use further down
+                        if (redirectOrSubIndex != -1) {
+                            // If redirecting standard input
+                            if (strcmp(tokens[redirectOrSubIndex], "<") == 0) {
+                                int fd_newInput = open(tokens[redirectOrSubIndex+1], O_RDONLY);
+                                if (DEBUG) {printf("fd_newInput: %d\n", fd_newInput);}
+                                dup2(fd_newInput, STDIN_FILENO);
+                                // For when you are redirecting input then output in same line
+                                if (strcmp(tokens[redirectOrSubIndex+2], ">") == 0) {
+                                    int fd_newOutput2 = open(tokens[redirectOrSubIndex+3], O_WRONLY | O_CREAT | O_TRUNC, 0640);
+                                    if (DEBUG) {printf("fd_newOutput2: %d\n", fd_newOutput2);}
+                                    dup2(fd_newOutput2, STDOUT_FILENO);
+                                }
+                            }
+                            // If redirecting standard output
+                            else if (strcmp(tokens[redirectOrSubIndex], ">") == 0) {
+                                int fd_newOutput = open(tokens[redirectOrSubIndex+1], O_WRONLY | O_CREAT | O_TRUNC, 0640);
+                                if (DEBUG) {printf("fd_newOutput: %d\n", fd_newOutput);}
+                                dup2(fd_newOutput, STDOUT_FILENO);
+                                 // For when you are redirecting output then input in same line
+                                if (strcmp(tokens[redirectOrSubIndex+2], "<") == 0) {
+                                    int fd_newInput2 = open(tokens[redirectOrSubIndex+3], O_RDONLY);
+                                    if (DEBUG) {printf("fd_newInput2: %d\n", fd_newInput2);}
+                                    dup2(fd_newInput2, STDIN_FILENO);
+                                }
+                            }
+                            // If piping occurs
+                            else if (pipesPresent == 1) {
+                                int fds[2];
+                                fds[0] = 0; // read end of the pipe
+                                fds[1] = 1; // write end of the pipe
+                            }
+                        }
                         execv(path_name, newArgv);
                         perror("execv");
                         exit(EXIT_FAILURE);
                     }
                     int wait_status;
                     int tpid = wait(&wait_status);
+                    if (WEXITSTATUS(wait_status) == 1) {
+                        errno = 1;
+                    }
                     if (DEBUG) {
                         if (WIFEXITED(wait_status)) {
                             printf("child exited with %d\n", WEXITSTATUS(wait_status));
@@ -405,8 +470,6 @@ void execute(char** tokens) {
                 } else {
                     perror("error");
                 }
-
-
 
                 free(newArgv);
 
@@ -418,6 +481,19 @@ void execute(char** tokens) {
                 break;
             
             case 0: ; // "cd"
+                
+                // Home Directory Extension
+                if (strcmp(tokens[i+1], "\0") == 0) {
+                    char* home = getenv("HOME");
+                    if (DEBUG) {printf("going to home directory: %s\n", home);}
+                    int cd_home_return = chdir(home);
+                    i++;
+                    if (cd_home_return == -1) {
+                        perror("cd");
+                        errno = 1;
+                    }
+                    break;
+                }
                 char* cd_path = tokens[i+1];
                 int cd_return = chdir(cd_path);
                 if (DEBUG) {printf("tokens[%d]: cd %s, return: %d\n", i, cd_path, cd_return);}
@@ -476,7 +552,7 @@ void input(int input) {
     bytes = read(input, buffer, BUFSIZE);
 
     // checking the conditions of the while loop simultaneous reads from the input and also prints "mySh> " if in interactive mode
-    // while ((myShPrinter(interactive_mode)) && (bytes = read(input, buffer, BUFSIZE)) > 0) {
+    // old windows version of nxt line: while ((myShPrinter(interactive_mode)) && (bytes = read(input, buffer, BUFSIZE)) > 0) {
     while (bytes > 0) {
 
         // Debug printing to show the contents of buffer[]
@@ -484,16 +560,15 @@ void input(int input) {
             printf("\nDEBUG MODE ENABLED\n");
             printf("----------------\n");
             printf("bytes read:     %d\n", bytes);
-            printf("buffer:\n");
-            // printf("                ");
+            printf("buffer:         ");
             for (int i = 0; i < bytes; i++) {
                 if (buffer[i] == '\n') {
-                    printf("buffer[%d]: \\n\\ \n", i);
+                    printf("\\n\\");
                 } else {
-                    printf("buffer[%d]: %c\n", i, buffer[i]);
+                    printf("%c", buffer[i]);
                 }
             } printf("\n");
-            printf("\n----------------\n");
+            printf("----------------\n");
         }
 
         // Loop that iterates through the buffer, parses it by line, and then tokenizes and executes each line after parsing
