@@ -320,8 +320,6 @@ void execute(char** tokens) {
             }
         }
 
-        // if (DEBUG) {printf("commandID: %d\n", commandID);}
-
         switch (commandID) {
             
             // If the token doesn't match any known commands in the commands[] array, this runs
@@ -465,7 +463,7 @@ void execute(char** tokens) {
                                 }
                             }
 
-                            
+                            // The following piping section is nonfunctional. I could not figure out how to make it work, but I did try very hard. And that's what counts.
                             // If piping occurs
                             else if (pipesPresent == 1) {
                                 int fds[2];
