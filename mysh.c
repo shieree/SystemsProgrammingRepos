@@ -8,44 +8,37 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-#define BUFSIZE         128
+#define BUFSIZE         8192
 #define DEBUG           1
 
-/*  
-    ~~ To do for Patrick: ~~
-    
-    implement piping
-    halt batch mode if syntax error (e.g. < not followed by a word)
-    if cd gets more arguments than expected, print error
-
-    Maybe address, if I have extra time:
-        account for when the buffer splits a line, and pass the leftovers into the next read call (can be lazily avoided by setting BUFSIZE to be very large)
-    
-    write() for the prompt?
-    
-    extensions (choose 1):
-        escape sequences
-        combining with && and ||
-
-    ~~ To do for Shieree: ~~
-
-    wildcard implementation
-
-    ~~ Things to keep in mind: ~~
-
-    when importing Windows text files to iLab for testing purposes, the text files may not work properly. write the text files in iLab if there are issues
-
-*/
+// Enjoy!
 
 // -----------------------------------------------------------------------------------------------------------
 
 // This function takes in a char array and its length, parses its tokens, and converts them into a string array
 char** tokenizer(char* string, int length) {
 
+    // Removing double \\ and \\n for the purpose of the escape sequence extension
+    for (int i = 0; i < length; i++) {
+        if (string[i] == '\\' && string[i+1] == '\\') {
+            if (string[i+2] == 'n') {
+                for (int j = i; j < length-3; j++) {
+                    string[j] = string[j+3];
+                }
+                length = length - 3;
+            } else {
+                for (int j = i; j < length-2; j++) {
+                    string[j] = string[j+2];
+                }
+                length = length - 2;
+            }
+        }
+    }
+
     // This filters the input and adds spaces before and after special characters in case they are missing
     // For example, "foo < bar" is equivalent to "foo<bar" and this function adds in those missing spaces if applicable
     for (int i = 0; i < length; i++) {
-        if (string[i] == '|' || string[i] == '<' || string[i] == '>') {
+        if ((string[i] == '|' || string[i] == '<' || string[i] == '>') && string[i-1] != '\\') {
             char operator = string[i];
             if (string[i-1] != ' ') {
                 length++;
@@ -83,7 +76,7 @@ char** tokenizer(char* string, int length) {
 
     // Count how many breaks are in the string
     for (int i = 0; i < length; i++) {
-        if (string[i] == ' ') {
+        if (string[i] == ' ' && string[i-1] != '\\') {
             breakCounter++;
         }
     }
@@ -91,9 +84,6 @@ char** tokenizer(char* string, int length) {
     // If there are no breaks in the string, just return the entire string as a token
     if (breakCounter == 0) {
         longestToken = length;
-
-        // This malloc() call is equivalent to "char token[breakCounter+2][longestToken+1]" except stored on the heap instead of the stack
-        // char (*token)[longestToken+1] = malloc(sizeof(char[breakCounter+2][longestToken+1])); REMOVE
 
         char** token = malloc((breakCounter+2) * sizeof(char*));
         for (int i = 0; i < breakCounter+2; i++) {
@@ -144,7 +134,7 @@ char** tokenizer(char* string, int length) {
                 longestToken = tokenLength;
             }
             tokenLength = 0;
-        } else if (string[i] == ' ') {
+        } else if (string[i] == ' ' && string[i-1] != '\\') {
             breaksIndexes[breakCounter++] = i;
             if (tokenLength > longestToken) {
                 longestToken = tokenLength;
@@ -170,11 +160,6 @@ char** tokenizer(char* string, int length) {
         
     }
 
-    // Create a char** token array based on how many tokens (+2) are in the string and how long the longest token is (+1)
-    // This malloc() call is equivalent to "char tokens[breakCounter+2][longestToken+1]" except stored on the heap instead of the stack
-    
-    // char (*tokens)[longestToken+1] = malloc(sizeof(char[breakCounter+2][longestToken+1])); REMOVE
-
     char** tokens = malloc((breakCounter+2) * sizeof(char*));
     for (int i = 0; i < breakCounter+2; i++) {
         tokens[i] = malloc((longestToken+1) * sizeof(char));
@@ -187,7 +172,7 @@ char** tokenizer(char* string, int length) {
         if (i == length) {
             tokens[row][col] = '\0';
             break;
-        } else if (string[i] == ' ') {
+        } else if (string[i] == ' ' && string[i-1] != '\\') {
             tokens[row][col] = '\0';
             row++;
             i++;
@@ -240,24 +225,23 @@ char** tokenizer(char* string, int length) {
 
     // Debug printing that shows the contents of the tokens array
     // Replaced by same printing in execute()
-    // if (DEBUG) {
-    //     printf("----------------\n");
-    //     printf("token(s): \n");
-    //     for (int i = 0; i < breakCounter+2; i++) {
-    //         printf("                ");
-    //         for (int j = 0; j < longestToken+1; j++) {
-    //             if (tokens[i][j] == '\0') {
-    //                 printf("\\0\n");
-    //                 break;
-    //             } else {
-    //                 printf("%c", tokens[i][j]);
-    //             }
-    //         }
-    //     }
-    //     printf("----------------\n");
-    // }
+    if (DEBUG) {
+        printf("----------------\n");
+        printf("token(s): \n");
+        for (int i = 0; i < breakCounter+2; i++) {
+            printf("                ");
+            for (int j = 0; j < longestToken+1; j++) {
+                if (tokens[i][j] == '\0') {
+                    printf("\\0\n");
+                    break;
+                } else {
+                    printf("%c", tokens[i][j]);
+                }
+            }
+        }
+        printf("----------------\n");
+    }
 
-    // printf("pointer in tokenizer(): %p\n", &tokens); REMOVE
 
     return tokens;
 }
@@ -265,15 +249,45 @@ char** tokenizer(char* string, int length) {
 // -----------------------------------------------------------------------------------------------------------
 
 void execute(char** tokens) {
-    
-    // printf("pointer in execute(): %p\n", &tokens); REMOVE
-    // printf("----------------\n");
 
-    // Count the number of tokens
     int numTokens = 0;
-    while (tokens[numTokens][0] != '\0') {
+    int escapeTokensFound = 0;
+    int longestToken = 0;
+    int currentLength = 0;
+    for (int i = 0; tokens[i][0] != '\0'; i++) {
         numTokens++;
+        for (int j = 0; tokens[i][j] != '\0'; j++) {
+            currentLength++;
+            if (tokens[i][j] == '\\') {
+                escapeTokensFound++;
+            }
+        }
+        if (currentLength > longestToken) {
+            longestToken = currentLength;
+        }
     }
+    if (DEBUG) {printf("numTokens: %d, escapeTokens: %d, longestToken: %d\n", numTokens, escapeTokensFound, longestToken);}
+
+    for (int i = 0; i < numTokens; i++) {
+        for (int j = 0; j < longestToken; j++) {
+            if (tokens[i][j] == '\\') {
+                char* newToken = malloc(longestToken * sizeof(char));
+                int k = 0;
+                int l = 0;
+                while (k < longestToken) {
+                    if (tokens[i][k] != '\\') {
+                        newToken[l++] = tokens[i][k++];
+                    } else {
+                        k++;
+                    }
+                }
+                free(tokens[i]);
+                tokens[i] = newToken;
+            }
+        }
+    }
+
+    
 
     // Debug printing that shows the number of tokens and the input strings
     if (DEBUG) {
@@ -314,14 +328,19 @@ void execute(char** tokens) {
             // The token is treated as a path or bare name
             case -1: ; 
 
-                // This counts the number of arguments for the given token and checks for redirects or sub-commands
+                // This counts the number of arguments for the given token and checks for redirects or pipes
                 int redirectOrSubIndex = -1;
                 int numArguments = 0;
-                // Checking for file redirects  || strcmp(tokens[k], "|") == 0
+                // Checking for file redirects
                 for (int k = i; k < numTokens; k++) {
                     if (strcmp(tokens[k], "<") == 0 || strcmp(tokens[k], ">") == 0) {
-                        redirectOrSubIndex = k;
-                        break;
+                        if (tokens[k+1][0] == '\0') {
+                            printf("error: no argument provided for file redirection\n");
+                            return;
+                        } else {
+                            redirectOrSubIndex = k;
+                            break;
+                        }
                     } else {
                         numArguments++;
                     }
@@ -355,12 +374,7 @@ void execute(char** tokens) {
                     printf("----------------\n");
                 }
 
-                // REMOVE BEFORE SUBMITTING. TESTING PURPOSES
-                // char directoryTest[100] = "/common/home/pfb34/214/myShell/";
-                // strcat(directoryTest, tokens[i]);
-
                 // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
-                // not fully finished
                 char directory1[100] = "/usr/local/sbin/";  char directory2[100] = "/usr/local/bin/";
                 char directory3[100] = "/usr/sbin/";        char directory4[100] = "/usr/bin/";
                 char directory5[100] = "/sbin/";            char directory6[100] = "/bin/";
@@ -417,11 +431,14 @@ void execute(char** tokens) {
                         perror("fork");
                         exit(EXIT_FAILURE);
                     }
-                    if (pid == 0) {
+                    if (pid == 0) { // Child process
+
                         if (DEBUG) {printf("path_name:      %s\n", path_name); printf("----------------\n");}
+                        
                         // If there is a file redirect or pipe following the path/bare token, this runs
                         // This uses dup2() to change standard input/outputs for use further down
                         if (redirectOrSubIndex != -1) {
+                            
                             // If redirecting standard input
                             if (strcmp(tokens[redirectOrSubIndex], "<") == 0) {
                                 int fd_newInput = open(tokens[redirectOrSubIndex+1], O_RDONLY);
@@ -434,6 +451,7 @@ void execute(char** tokens) {
                                     dup2(fd_newOutput2, STDOUT_FILENO);
                                 }
                             }
+
                             // If redirecting standard output
                             else if (strcmp(tokens[redirectOrSubIndex], ">") == 0) {
                                 int fd_newOutput = open(tokens[redirectOrSubIndex+1], O_WRONLY | O_CREAT | O_TRUNC, 0640);
@@ -446,11 +464,47 @@ void execute(char** tokens) {
                                     dup2(fd_newInput2, STDIN_FILENO);
                                 }
                             }
+
+                            
                             // If piping occurs
                             else if (pipesPresent == 1) {
                                 int fds[2];
                                 fds[0] = 0; // read end of the pipe
                                 fds[1] = 1; // write end of the pipe
+                                if (pipe(fds) == -1) {
+                                    perror("pipe");
+                                    return;
+                                }
+                                int pid2 = fork();
+                                if (pid2 == 0) { // Pipe child process
+                                    dup2(fds[1], STDOUT_FILENO);
+                                    close(fds[0]);
+                                    close(fds[1]);
+                                    // Create a new argv for the piping child process
+                                    char** pipeArgv = malloc((numTokens - pipesIndex) * sizeof(char*));
+                                    int indexer = pipesIndex+1;
+                                    for (int l = 0; l < (numTokens-pipesIndex); l++) {
+                                        pipeArgv[l] = tokens[indexer++];
+                                    }
+                                    char* pipe_path_name = getenv("PATH");
+                                    strcat(pipe_path_name, newArgv[0]);
+                                    if (DEBUG) {
+                                        printf("Calling pipe execv with path: %s\n", pipe_path_name);
+                                        printf("pipeArgv:\n");
+                                        for (int k = 0; k < (numTokens-pipesIndex); k++) {
+                                            printf("                ");
+                                            printf("[%d]: %s\n", k, pipeArgv[k]);
+                                        }
+                                        printf("----------------\n");
+                                    }
+                                    execv(pipe_path_name, pipeArgv);
+                                }
+                                close(fds[1]);
+                                int bytesPipe = 0;
+                                char* bufferPipe[BUFSIZE];
+                                // while ((bytes = read(fds[0], bufferPipe, BUFSIZE)) > 0) {
+
+                                // }
                             }
                         }
                         execv(path_name, newArgv);
@@ -468,7 +522,7 @@ void execute(char** tokens) {
                         }
                     }
                 } else {
-                    perror("error");
+                    perror("Error");
                 }
 
                 free(newArgv);
@@ -493,6 +547,10 @@ void execute(char** tokens) {
                         errno = 1;
                     }
                     break;
+                }
+                if (tokens[i+2][0] != '\0') {
+                    printf("cd: too many arguments provided\n");
+                    return;
                 }
                 char* cd_path = tokens[i+1];
                 int cd_return = chdir(cd_path);
@@ -524,7 +582,6 @@ void execute(char** tokens) {
 
 // This helper function allows "mySh> " to print before the standard input when in interactive mode
 int myShPrinter(int interactive_mode) {
-    // if (DEBUG) {printf("errno: %d, interactive_mode: %d\n", errno, interactive_mode);}
     if (interactive_mode == 1 && errno == 0) {
         printf("mySh> ");
         fflush(stdout);
@@ -554,6 +611,13 @@ void input(int input) {
     // checking the conditions of the while loop simultaneous reads from the input and also prints "mySh> " if in interactive mode
     // old windows version of nxt line: while ((myShPrinter(interactive_mode)) && (bytes = read(input, buffer, BUFSIZE)) > 0) {
     while (bytes > 0) {
+
+        // If bytes == BUFSIZE, then it can not be guaranteed that read() did not split a line, and the program prints and error and exits
+        // This is bad practice since it is possible to carry over that split line to the next read() call, but I do not have time to implement that as of now :(
+        if (bytes == BUFSIZE) {
+            printf("Error: buffer size too small for input. Please expand the buffer size and try again.");
+            exit(EXIT_FAILURE);
+        }
 
         // Debug printing to show the contents of buffer[]
         if (DEBUG) {
@@ -591,15 +655,11 @@ void input(int input) {
                     line[k++] = buffer[j];
                 }
 
-                // if(DEBUG) {printf("passing line of length %d into tokenizer()\n", length);}
                 char** tokens = tokenizer(line, length);
 
-                // printf("pointer in input(): %p\n", &tokens);
-                
                 execute(tokens);
                 
                 free(line);
-                // free(tokens); // freed in execute()
                 prevIndex = i+1;
             }
         }
