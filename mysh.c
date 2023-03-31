@@ -362,6 +362,34 @@ void execute(char** tokens) {
                 }
                 newArgv[numArguments] = NULL;
                 
+                //Wildcard Expansion --------------------------------
+                char **found;
+                glob_t g;
+
+                for (int b = 0; newArgv[b] != NULL; b++) {
+                    if(strchr(newArgv[b], '*') != NULL) {
+                        int ret = glob(newArgv[b], GLOB_NOCHECK, NULL, &g);
+                        if (ret == 0) {
+                            for (int i = 0; i < g.gl_pathc; i++) {
+                                found = g.gl_pathv;
+                                //while (found[g.gl_pathc] != NULL) {
+                                //    g.gl_pathc++;
+                                //}
+                                while (found[i] != NULL) {
+                                    i++;
+                                }
+                                newArgv = realloc(newArgv, (b + g.gl_pathc + 1) * sizeof(char*));
+                                for (int c = 0; c < g.gl_pathc; c++) {
+                                    newArgv[b + c] = strdup(found[c]);
+                                }
+                                newArgv[b + g.gl_pathc] = NULL;
+                            }
+                        }
+                        globfree(&g);
+                    }
+                }
+                
+                
                 if (DEBUG) {
                     printf("newArgv:\n");
 
@@ -372,6 +400,7 @@ void execute(char** tokens) {
                     printf("----------------\n");
                 }
 
+              
                 // This checks to see if the token is a bare name, and checks 6 bin directories to see if the given file is in them
                 char directory1[100] = "/usr/local/sbin/";  char directory2[100] = "/usr/local/bin/";
                 char directory3[100] = "/usr/sbin/";        char directory4[100] = "/usr/bin/";
