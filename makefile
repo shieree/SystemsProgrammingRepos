@@ -3,7 +3,7 @@ CCFLAGS = -g
 
 all: mysh
 
-myshS.c: mysh.c
+mysh.c: mysh.c
 	$(CC) $(CCFLAGS) -c mysh.c
 
 clean:
