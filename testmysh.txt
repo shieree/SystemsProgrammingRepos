@@ -1,0 +1,11 @@
+echo hello
+ls
+cd 
+pwd
+echo hello > redirectTest.txt
+*.txt
+cd ..
+pwd 
+\\
+\\n
+exit
