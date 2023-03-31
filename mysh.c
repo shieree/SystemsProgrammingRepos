@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <glob.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
