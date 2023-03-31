@@ -6,6 +6,6 @@ echo hello > redirectTest.txt
 *.txt
 cd ..
 pwd 
-\\
-\\n
+echo bar\ bin > escapeSequenceTest.txt
+echo saying\ this\ in\redirectTest > *directTest.txt
 exit
